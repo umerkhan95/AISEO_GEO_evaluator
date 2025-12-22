@@ -13,8 +13,8 @@ from typing import Literal
 class ModelConfig:
     """Configuration for AI models."""
 
-    # OpenAI GPT-4o for PDF processing (multimodal)
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    # OpenAI GPT-4o-mini for PDF processing
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_temperature: float = 0.1  # Low temp for extraction accuracy
 

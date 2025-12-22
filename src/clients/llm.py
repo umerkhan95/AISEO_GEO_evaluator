@@ -40,7 +40,7 @@ class LLMPreset(Enum):
 # Preset configurations
 _PRESET_CONFIGS = {
     LLMPreset.DEFAULT: {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "temperature": 0.3,
     },
     LLMPreset.CLASSIFIER: {
@@ -48,15 +48,15 @@ _PRESET_CONFIGS = {
         "temperature": 0.0,
     },
     LLMPreset.OPTIMIZER: {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "temperature": 0.3,
     },
     LLMPreset.HUMANIZER: {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "temperature": 0.5,
     },
     LLMPreset.EXTRACTOR: {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "temperature": 0.1,
     },
     LLMPreset.SCORER: {

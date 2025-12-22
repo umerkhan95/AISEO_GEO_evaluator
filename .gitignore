@@ -63,6 +63,7 @@ logs/
 crawled_content/
 uploads/
 pdfs/
+*.pdf
 
 # Node.js (frontend)
 frontend/node_modules/

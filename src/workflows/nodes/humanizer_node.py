@@ -5,13 +5,11 @@ Adds conversational elements, varies sentence structure, and reduces
 AI detection signals while maintaining GEO optimization.
 """
 
-import os
 from typing import Tuple
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
+# Use centralized clients
+from src.clients import get_humanizer_llm
 
 
 class HumanizedContent(BaseModel):
@@ -37,11 +35,8 @@ def humanize_content(
     Returns:
         Tuple of (humanized_content, naturalness_score)
     """
-    llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.5,  # Higher temp for more variation
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
+    # Use centralized humanizer LLM (higher temperature for variation)
+    llm = get_humanizer_llm()
 
     prompt = f"""You are a content editor making AI-optimized text sound more human and natural.
 

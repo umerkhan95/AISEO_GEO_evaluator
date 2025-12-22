@@ -5,13 +5,11 @@ Uses LLM to analyze content and classify into predefined industries
 for better guideline matching.
 """
 
-import os
 from typing import Tuple, List
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
+# Use centralized clients
+from src.clients import get_classifier_llm
 
 # Predefined industries for classification
 INDUSTRIES = [
@@ -53,11 +51,8 @@ def classify_industry(content: str, url: str = "") -> Tuple[str, float, List[str
     Returns:
         Tuple of (primary_industry, confidence, secondary_industries)
     """
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",  # Use smaller model for classification
-        temperature=0,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
+    # Use centralized classifier LLM (gpt-4o-mini, temp=0)
+    llm = get_classifier_llm()
 
     # Truncate content to first 2000 words for efficiency
     words = content.split()

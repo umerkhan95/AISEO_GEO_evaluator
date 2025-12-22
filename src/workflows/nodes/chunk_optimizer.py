@@ -5,14 +5,12 @@ Takes a content chunk and applies retrieved guidelines to create
 GEO-optimized content with citations, structure, and authority signals.
 """
 
-import os
 import time
 from typing import Dict, List, Tuple
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
+# Use centralized clients
+from src.clients import get_optimizer_llm
 
 
 class OptimizedChunk(BaseModel):
@@ -51,11 +49,8 @@ def optimize_chunk(
     """
     start_time = time.time()
 
-    llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.3,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
+    # Use centralized optimizer LLM
+    llm = get_optimizer_llm()
 
     # Format guidelines for prompt
     guidelines_text = format_guidelines_for_prompt(guidelines)

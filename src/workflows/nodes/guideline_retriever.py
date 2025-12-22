@@ -5,37 +5,27 @@ Queries multiple collections with industry-specific filtering to get
 the most relevant optimization guidelines for each chunk.
 """
 
-import os
+import logging
 from typing import List, Dict, Optional
-from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
-from langchain_openai import OpenAIEmbeddings
-from dotenv import load_dotenv
 
-load_dotenv()
+# Use centralized clients
+from src.clients import (
+    get_qdrant_client,
+    get_embeddings,
+    COLLECTIONS,
+    COLLECTION_NAMES,
+)
 
-# Collection mapping
-COLLECTIONS = {
-    "universal": "geo_seo_universal",
-    "industry": "geo_seo_industry",
-    "technical": "geo_seo_technical",
-    "citation": "geo_seo_citation",
-    "metrics": "geo_seo_metrics",
-}
+logger = logging.getLogger(__name__)
 
 
 class GuidelineRetriever:
     """Retrieves guidelines from Qdrant vector database."""
 
     def __init__(self):
-        self.client = QdrantClient(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6333")),
-        )
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            api_key=os.getenv("OPENAI_API_KEY"),
-        )
+        self.client = get_qdrant_client()
+        self.embeddings = get_embeddings()
 
     def retrieve_for_chunk(
         self,
@@ -161,7 +151,7 @@ class GuidelineRetriever:
             return guidelines
 
         except Exception as e:
-            print(f"Error querying {collection_name}: {e}")
+            logger.warning(f"Error querying {collection_name}: {e}")
             return []
 
     def get_guidelines_summary(self, guidelines: List[Dict]) -> str:

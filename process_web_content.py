@@ -1,8 +1,6 @@
 """
 Process crawled web content and extract guidelines into Qdrant.
 """
-import os
-import json
 import uuid
 from pathlib import Path
 from datetime import datetime
@@ -10,11 +8,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
+
+# Use centralized clients
+from src.clients import (
+    get_qdrant_client,
+    get_embeddings,
+    get_extractor_llm,
+    ensure_collections_exist,
+    COLLECTIONS,
+)
 
 # Models for structured output
 class ExtractedGuideline(BaseModel):
@@ -29,23 +34,13 @@ class ExtractedGuideline(BaseModel):
 class GuidelinesExtraction(BaseModel):
     guidelines: List[ExtractedGuideline] = Field(default_factory=list, description="Extracted guidelines")
 
-# Collection mapping
-COLLECTIONS = {
-    "universal_seo_geo": "geo_seo_universal",
-    "industry_specific": "geo_seo_industry",
-    "technical": "geo_seo_technical",
-    "citation_optimization": "geo_seo_citation",
-    "metrics": "geo_seo_metrics",
-}
+# Note: COLLECTIONS mapping is now imported from src.clients
 
 def extract_guidelines_from_content(content: str, source_name: str) -> List[dict]:
     """Extract guidelines from markdown content using OpenAI."""
 
-    llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.1,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
+    # Use centralized extractor LLM
+    llm = get_extractor_llm()
 
     prompt = f"""Analyze this GEO/SEO content and extract specific, actionable guidelines.
 
@@ -92,23 +87,12 @@ Return at least 10-20 specific guidelines."""
 def store_guidelines_in_qdrant(guidelines: List[dict]):
     """Store extracted guidelines in Qdrant."""
 
-    client = QdrantClient(
-        host=os.getenv("QDRANT_HOST", "localhost"),
-        port=int(os.getenv("QDRANT_PORT", "6333")),
-    )
+    # Use centralized clients
+    client = get_qdrant_client()
+    embeddings = get_embeddings()
 
-    embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
-
-    # Ensure collections exist
-    for collection_name in COLLECTIONS.values():
-        if not client.collection_exists(collection_name):
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
-            )
+    # Ensure collections exist using centralized function
+    ensure_collections_exist()
 
     # Group guidelines by category
     by_category = {}

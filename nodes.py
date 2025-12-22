@@ -11,11 +11,19 @@ from datetime import datetime
 from typing import Any
 import logging
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
-from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+
+# Use centralized clients
+from src.clients import (
+    get_qdrant_client,
+    get_embeddings,
+    get_extractor_llm,
+    ensure_collections_exist,
+    calculate_priority as centralized_calculate_priority,
+    calculate_complexity as centralized_calculate_complexity,
+)
 
 from state import (
     GraphState,
@@ -127,12 +135,8 @@ def document_analyzer_node(state: GraphState) -> dict[str, Any]:
     analyzed_documents = []
     errors = []
 
-    # Initialize OpenAI model (GPT-4o for vision/multimodal)
-    llm = ChatOpenAI(
-        model=config.models.openai_model,
-        temperature=config.models.openai_temperature,
-        api_key=config.models.openai_api_key,
-    )
+    # Use centralized extractor LLM (GPT-4o for document analysis)
+    llm = get_extractor_llm()
 
     # Use structured output
     structured_llm = llm.with_structured_output(ExtractedStructure)
@@ -240,12 +244,8 @@ def content_extractor_node(state: GraphState) -> dict[str, Any]:
     raw_guidelines = []
     errors = []
 
-    llm = ChatOpenAI(
-        model=config.models.openai_model,
-        temperature=config.models.openai_temperature,
-        api_key=config.models.openai_api_key,
-    )
-
+    # Use centralized extractor LLM
+    llm = get_extractor_llm()
     structured_llm = llm.with_structured_output(GuidelinesList)
 
     for analyzed in state.get("analyzed_documents", []):
@@ -354,11 +354,8 @@ def deduplication_node(state: GraphState) -> dict[str, Any]:
             "current_node": "deduplication",
         }
 
-    # Initialize embeddings
-    embeddings_model = OpenAIEmbeddings(
-        model=config.models.embedding_model,
-        openai_api_key=config.models.openai_api_key,
-    )
+    # Use centralized embeddings client
+    embeddings_model = get_embeddings()
 
     # Generate embeddings for all guidelines
     guideline_texts = [g.content for g in raw_guidelines]
@@ -586,21 +583,12 @@ def vector_storage_node(state: GraphState) -> dict[str, Any]:
     enriched_guidelines = state.get("enriched_guidelines", [])
     logger.info(f"Storing {len(enriched_guidelines)} enriched guidelines in Qdrant")
 
-    # Initialize Qdrant client
-    qdrant_client = QdrantClient(
-        host=config.qdrant.host,
-        port=config.qdrant.port,
-        api_key=config.qdrant.api_key if config.qdrant.api_key else None,
-    )
+    # Use centralized clients
+    qdrant_client = get_qdrant_client()
+    embeddings_model = get_embeddings()
 
-    # Initialize embeddings
-    embeddings_model = OpenAIEmbeddings(
-        model=config.models.embedding_model,
-        openai_api_key=config.models.openai_api_key,
-    )
-
-    # Ensure collections exist
-    _ensure_collections_exist(qdrant_client)
+    # Ensure collections exist using centralized function
+    ensure_collections_exist()
 
     storage_results = []
     errors = []
@@ -680,14 +668,5 @@ def vector_storage_node(state: GraphState) -> dict[str, Any]:
     }
 
 
-def _ensure_collections_exist(client: QdrantClient):
-    """Ensure all required Qdrant collections exist."""
-    for collection_name in config.qdrant.collection_names:
-        if not client.collection_exists(collection_name):
-            logger.info(f"Creating collection: {collection_name}")
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=config.models.embedding_dimensions, distance=Distance.COSINE
-                ),
-            )
+# Note: _ensure_collections_exist has been moved to src/clients/qdrant_client.py
+# Use ensure_collections_exist() from src.clients instead

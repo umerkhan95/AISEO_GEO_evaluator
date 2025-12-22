@@ -23,12 +23,20 @@ import json
 import logging
 from pathlib import Path
 
-from qdrant_client import QdrantClient
-from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
 # Load environment variables BEFORE importing config
 load_dotenv()
+
+# Use centralized clients
+from src.clients import (
+    get_qdrant_client,
+    get_embeddings,
+    get_llm,
+    LLMPreset,
+    COLLECTIONS,
+    ensure_collections_exist,
+)
 
 # LangGraph imports
 from graph import app as langgraph_app
@@ -191,21 +199,14 @@ class SearchResponse(BaseModel):
 # ============================================================================
 
 
-def initialize_qdrant_client() -> QdrantClient:
-    """Initialize Qdrant client."""
-    return QdrantClient(
-        host=config.qdrant.host,
-        port=config.qdrant.port,
-        api_key=config.qdrant.api_key if config.qdrant.api_key else None,
-    )
+def initialize_qdrant_client():
+    """Initialize Qdrant client using centralized factory."""
+    return get_qdrant_client()
 
 
-def initialize_embeddings() -> OpenAIEmbeddings:
-    """Initialize OpenAI embeddings."""
-    return OpenAIEmbeddings(
-        model=config.models.embedding_model,
-        openai_api_key=config.models.openai_api_key,
-    )
+def initialize_embeddings():
+    """Initialize OpenAI embeddings using centralized factory."""
+    return get_embeddings()
 
 
 async def process_pdf_batch(batch_id: str, documents: List[PDFDocument]):
@@ -689,13 +690,8 @@ def get_main_agent():
         if DEEP_AGENTS_AVAILABLE and create_geo_seo_agent:
             _main_agent = create_geo_seo_agent()
         else:
-            # Use a simple LangChain agent as fallback
-            from langchain_openai import ChatOpenAI
-            _main_agent = ChatOpenAI(
-                model=config.models.openai_model,
-                temperature=config.models.openai_temperature,
-                api_key=config.models.openai_api_key,
-            )
+            # Use centralized LLM factory as fallback
+            _main_agent = get_llm(LLMPreset.DEFAULT)
     return _main_agent
 
 
@@ -950,13 +946,8 @@ async def export_guidelines(
         # Collect all guidelines
         all_guidelines = []
 
-        from qdrant_client import QdrantClient
-        from src.tools.qdrant_tools import COLLECTIONS
-
-        client = QdrantClient(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6333")),
-        )
+        # Use centralized client and COLLECTIONS
+        client = get_qdrant_client()
 
         collections_to_export = (
             [COLLECTIONS.get(collection, collection)] if collection
@@ -1014,12 +1005,9 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
     }
 
-    # Check Qdrant
+    # Check Qdrant using centralized client
     try:
-        client = QdrantClient(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", "6333")),
-        )
+        client = get_qdrant_client()
         collections = client.get_collections()
         health["components"]["qdrant"] = "healthy"
         health["qdrant_collections"] = len(collections.collections)

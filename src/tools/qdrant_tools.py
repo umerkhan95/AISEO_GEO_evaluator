@@ -7,35 +7,29 @@ These tools enable the Deep Agent to:
 3. Get collection statistics
 """
 
-import os
 import json
 import hashlib
 from typing import Optional
 from datetime import datetime
 
-from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    Distance,
-    VectorParams,
     PointStruct,
     Filter,
     FieldCondition,
     MatchValue,
     MatchAny,
 )
-from openai import OpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Collection names mapping
-COLLECTIONS = {
-    "universal_seo_geo": "geo_seo_universal",
-    "industry_specific": "geo_seo_industry",
-    "technical": "geo_seo_technical",
-    "citation_optimization": "geo_seo_citation",
-    "metrics": "geo_seo_metrics",
-}
+# Use centralized clients
+from src.clients import (
+    get_qdrant_client,
+    ensure_collections_exist,
+    generate_embedding,
+    calculate_priority,
+    calculate_complexity,
+    COLLECTIONS,
+    COLLECTION_NAMES,
+)
 
 COLLECTION_DESCRIPTIONS = {
     "geo_seo_universal": "Universal SEO+GEO strategies applicable to all industries",
@@ -44,69 +38,6 @@ COLLECTION_DESCRIPTIONS = {
     "geo_seo_citation": "Citation optimization: content structuring for AI citations",
     "geo_seo_metrics": "Measurement metrics: KPIs, ROI tracking, benchmarks",
 }
-
-# Embedding dimensions for text-embedding-3-small
-EMBEDDING_DIM = 1536
-
-# Singleton clients
-_qdrant_client: Optional[QdrantClient] = None
-_openai_client: Optional[OpenAI] = None
-
-
-def _get_qdrant_client() -> QdrantClient:
-    """Get or create Qdrant client instance."""
-    global _qdrant_client
-    if _qdrant_client is None:
-        host = os.getenv("QDRANT_HOST", "localhost")
-        port = int(os.getenv("QDRANT_PORT", "6333"))
-        api_key = os.getenv("QDRANT_API_KEY")
-
-        _qdrant_client = QdrantClient(
-            host=host,
-            port=port,
-            api_key=api_key if api_key else None,
-        )
-    return _qdrant_client
-
-
-def _get_openai_client() -> OpenAI:
-    """Get or create OpenAI client instance."""
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-        _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
-
-
-def _generate_embedding(text: str) -> list[float]:
-    """Generate embedding for text using OpenAI."""
-    client = _get_openai_client()
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text[:8000],  # Truncate to avoid token limits
-    )
-    return response.data[0].embedding
-
-
-def _ensure_collections_exist():
-    """Ensure all required collections exist in Qdrant."""
-    client = _get_qdrant_client()
-
-    for collection_name in COLLECTIONS.values():
-        try:
-            if not client.collection_exists(collection_name):
-                client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(
-                        size=EMBEDDING_DIM,
-                        distance=Distance.COSINE,
-                    ),
-                )
-        except Exception:
-            # Collection might already exist
-            pass
 
 
 def store_guidelines(
@@ -137,8 +68,8 @@ def store_guidelines(
     Returns:
         JSON string with storage results
     """
-    _ensure_collections_exist()
-    client = _get_qdrant_client()
+    ensure_collections_exist()
+    client = get_qdrant_client()
 
     result = {
         "total_guidelines": len(guidelines),
@@ -167,25 +98,14 @@ def store_guidelines(
             if guideline.get("has_case_study"):
                 confidence = min(confidence + 0.1, 1.0)
 
-            # Determine priority
-            if confidence >= 0.85:
-                priority = "high"
-            elif confidence >= 0.65:
-                priority = "medium"
-            else:
-                priority = "low"
+            # Use centralized priority calculation
+            priority = calculate_priority(confidence, impact_score=0.5)
 
-            # Determine complexity based on content
-            content_lower = guideline["content"].lower()
-            if any(word in content_lower for word in ["schema", "api", "code", "implementation"]):
-                complexity = "complex"
-            elif any(word in content_lower for word in ["configure", "setup", "integrate"]):
-                complexity = "moderate"
-            else:
-                complexity = "easy"
+            # Use centralized complexity calculation
+            complexity = calculate_complexity(guideline["content"])
 
-            # Generate embedding
-            embedding = _generate_embedding(guideline["content"])
+            # Generate embedding using centralized function
+            embedding = generate_embedding(guideline["content"])
 
             # Create payload
             payload = {
@@ -268,11 +188,11 @@ def search_guidelines(
     Returns:
         JSON string with ranked search results including guidelines and metadata
     """
-    _ensure_collections_exist()
-    client = _get_qdrant_client()
+    ensure_collections_exist()
+    client = get_qdrant_client()
 
-    # Generate query embedding
-    query_embedding = _generate_embedding(query)
+    # Generate query embedding using centralized function
+    query_embedding = generate_embedding(query)
 
     # Determine which collections to search
     if collection:
@@ -285,7 +205,7 @@ def search_guidelines(
         }
         collections_to_search = [collection_map.get(collection, "geo_seo_universal")]
     else:
-        collections_to_search = list(COLLECTIONS.values())
+        collections_to_search = COLLECTION_NAMES
 
     # Build filter conditions
     filter_conditions = []
@@ -318,7 +238,7 @@ def search_guidelines(
                 # Calculate combined score
                 relevance_score = result.score
                 confidence_score = payload.get("confidence_score", 0.5)
-                priority_weight = {"high": 1.0, "medium": 0.8, "low": 0.6}.get(
+                priority_weight = {"high": 1.0, "medium": 0.8, "low": 0.6, "critical": 1.2}.get(
                     payload.get("priority", "medium"), 0.8
                 )
                 combined_score = relevance_score * confidence_score * priority_weight
@@ -337,7 +257,7 @@ def search_guidelines(
                     "collection": collection_name,
                 })
 
-        except Exception as e:
+        except Exception:
             # Collection might not exist or other error
             continue
 
@@ -366,13 +286,13 @@ def get_collection_stats() -> str:
     Returns:
         JSON string with comprehensive statistics
     """
-    _ensure_collections_exist()
-    client = _get_qdrant_client()
+    ensure_collections_exist()
+    client = get_qdrant_client()
 
     stats = {
         "collections": {},
         "total_guidelines": 0,
-        "by_priority": {"high": 0, "medium": 0, "low": 0},
+        "by_priority": {"high": 0, "medium": 0, "low": 0, "critical": 0},
         "by_industry": {},
         "average_confidence": 0,
     }
@@ -380,7 +300,8 @@ def get_collection_stats() -> str:
     confidence_sum = 0
     total_count = 0
 
-    for collection_name, description in COLLECTION_DESCRIPTIONS.items():
+    for collection_name in COLLECTION_NAMES:
+        description = COLLECTION_DESCRIPTIONS.get(collection_name, "")
         try:
             collection_info = client.get_collection(collection_name)
             count = collection_info.points_count
@@ -446,13 +367,13 @@ def get_related_guidelines(
     Returns:
         JSON string with related guidelines
     """
-    client = _get_qdrant_client()
+    client = get_qdrant_client()
 
     # First, find the original guideline
     original = None
     original_collection = None
 
-    for collection_name in COLLECTIONS.values():
+    for collection_name in COLLECTION_NAMES:
         try:
             results = client.scroll(
                 collection_name=collection_name,
@@ -480,7 +401,7 @@ def get_related_guidelines(
     # Search for similar guidelines using the original's vector
     related = []
 
-    for collection_name in COLLECTIONS.values():
+    for collection_name in COLLECTION_NAMES:
         try:
             results = client.search(
                 collection_name=collection_name,

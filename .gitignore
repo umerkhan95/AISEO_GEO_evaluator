@@ -1,0 +1,98 @@
+# ===========================================
+# AISEO GEO Optimizer - Git Ignore
+# ===========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env.local
+
+# Environment variables (NEVER commit secrets)
+.env
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+geo_optimizer.db
+
+# Logs
+*.log
+logs/
+/tmp/
+
+# Crawled content
+crawled_content/
+uploads/
+pdfs/
+
+# Node.js (frontend)
+frontend/node_modules/
+frontend/.pnpm-debug.log
+frontend/dist/
+frontend/.vite/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Qdrant local data
+qdrant_data/
+.qdrant/
+
+# Model cache
+.cache/
+models/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.bak
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+
+# Fly.io
+fly.toml.bak

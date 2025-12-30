@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { uploadPDF, processURL, getBatchStatus, type BatchStatus } from '@/lib/api'
-import { cn, formatNumber } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 interface FileUpload {
   file: File
@@ -114,10 +114,10 @@ export default function Upload() {
 
     setUrlProcessing(true)
     try {
-      const result = await processURL(urlInput)
+      await processURL(urlInput)
       toast.success('URL processing started!')
       setUrlInput('')
-    } catch (error) {
+    } catch {
       toast.error('Failed to process URL')
     } finally {
       setUrlProcessing(false)

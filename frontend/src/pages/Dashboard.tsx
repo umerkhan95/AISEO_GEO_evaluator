@@ -59,7 +59,7 @@ export default function Dashboard() {
     queryFn: getCollections,
   })
 
-  const { data: statsData } = useQuery({
+  const { data: _statsData } = useQuery({
     queryKey: ['stats'],
     queryFn: getStats,
   })
@@ -99,7 +99,7 @@ export default function Dashboard() {
         animate="show"
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
       >
-        {updatedStats.map((stat, index) => (
+        {updatedStats.map((stat) => (
           <motion.div key={stat.name} variants={item}>
             <div className="glass rounded-2xl p-6 border border-white/10 hover:border-white/20 transition-all duration-300 group">
               <div className="flex items-center justify-between mb-4">

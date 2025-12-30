@@ -43,7 +43,6 @@ env/
 *.swp
 *.swo
 *~
-.DS_Store
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -53,30 +52,35 @@ env/
 *.db
 *.sqlite
 *.sqlite3
-geo_optimizer.db
 
 # Logs
 *.log
 logs/
 /tmp/
 
-# Crawled content
+# Crawled content and uploads
 crawled_content/
 uploads/
 pdfs/
 *.pdf
+
+# Screenshots (not needed in repo)
+Screenshot*.png
 
 # Node.js (frontend)
 frontend/node_modules/
 frontend/.pnpm-debug.log
 frontend/dist/
 frontend/.vite/
+node_modules/
 
 # Test coverage
 .coverage
 htmlcov/
 .pytest_cache/
 .tox/
+.mypy_cache/
+.ruff_cache/
 
 # Qdrant local data
 qdrant_data/
@@ -90,6 +94,8 @@ models/
 .DS_Store
 Thumbs.db
 *.bak
+ehthumbs.db
+Desktop.ini
 
 # Temporary files
 *.tmp
@@ -98,3 +104,13 @@ Thumbs.db
 
 # Fly.io
 fly.toml.bak
+
+# Python virtual environment indicators
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Profiling
+*.prof
+
+# Docker
+*.dockerfile.bak

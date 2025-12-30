@@ -62,7 +62,7 @@ export default function Optimize() {
   const [message, setMessage] = useState('');
   const [chunks, setChunks] = useState<ChunkStatus[]>([]);
   const [result, setResult] = useState<JobResult | null>(null);
-  const [logs, setLogs] = useState<ProgressUpdate[]>([]);
+  const [_logs, setLogs] = useState<ProgressUpdate[]>([]);
   const [jobStats, setJobStats] = useState<JobStats | null>(null);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);

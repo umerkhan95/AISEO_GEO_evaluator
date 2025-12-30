@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { searchGuidelines, type Guideline } from '@/lib/api'
-import { cn, truncate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 const categories = [
   { value: '', label: 'All Categories' },

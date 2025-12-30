@@ -302,6 +302,60 @@ async def get_optimizer_stats():
     return stats
 
 
+@app.get("/api/v2/showcase")
+async def get_showcase(limit: int = 50):
+    """
+    Get completed optimization jobs for public showcase.
+
+    Returns URLs that have been optimized with full details:
+    - URL, industry, scores, improvement %, timestamp
+    """
+    from database import get_db
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                job_id,
+                url,
+                industry,
+                industry_confidence,
+                original_geo_score,
+                optimized_geo_score,
+                CASE
+                    WHEN original_geo_score > 0
+                    THEN ROUND(((optimized_geo_score - original_geo_score) / original_geo_score) * 100, 1)
+                    ELSE 0
+                END as improvement_pct,
+                total_chunks,
+                created_at,
+                completed_at
+            FROM optimization_jobs
+            WHERE status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT ?
+        """, (limit,))
+
+        jobs = []
+        for row in cursor.fetchall():
+            jobs.append({
+                "job_id": row["job_id"],
+                "url": row["url"],
+                "industry": row["industry"],
+                "industry_confidence": row["industry_confidence"],
+                "original_score": row["original_geo_score"],
+                "optimized_score": row["optimized_geo_score"],
+                "improvement_pct": row["improvement_pct"] or 0,
+                "chunks_processed": row["total_chunks"],
+                "optimized_at": row["completed_at"] or row["created_at"]
+            })
+
+        return {
+            "total": len(jobs),
+            "websites": jobs
+        }
+
+
 @app.get("/api/v2/health")
 async def health_check():
     """Health check endpoint."""

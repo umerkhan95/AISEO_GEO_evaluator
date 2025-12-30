@@ -7,6 +7,7 @@ import Search from './pages/Search'
 import Upload from './pages/Upload'
 import Collections from './pages/Collections'
 import Chat from './pages/Chat'
+import Showcase from './pages/Showcase'
 import { ThemeProvider } from './hooks/useTheme'
 
 function App() {
@@ -27,6 +28,9 @@ function App() {
         <Routes>
           {/* Optimize page is now the main landing page */}
           <Route path="/" element={<Optimize />} />
+
+          {/* Showcase page - public display of optimized websites */}
+          <Route path="/showcase" element={<Showcase />} />
 
           {/* Other pages with layout */}
           <Route path="/app" element={<Layout />}>

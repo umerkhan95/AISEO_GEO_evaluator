@@ -153,4 +153,31 @@ export async function healthCheck(): Promise<unknown> {
   return response.data
 }
 
+// Showcase types
+export interface ShowcaseWebsite {
+  job_id: string
+  url: string
+  industry: string | null
+  industry_confidence: number
+  original_score: number
+  optimized_score: number
+  improvement_pct: number
+  chunks_processed: number
+  optimized_at: string
+}
+
+export interface ShowcaseResponse {
+  total: number
+  websites: ShowcaseWebsite[]
+}
+
+// Showcase endpoint (uses v2 API)
+export async function getShowcase(limit = 50): Promise<ShowcaseResponse> {
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+  const response = await axios.get(`${baseUrl}/api/v2/showcase`, {
+    params: { limit }
+  })
+  return response.data
+}
+
 export default api

@@ -17,8 +17,12 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, asdict
 from contextlib import contextmanager
 
-# Database file location
-DB_PATH = Path(__file__).parent / "geo_optimizer.db"
+# Database file location - use /data for persistent storage on Fly.io
+import os
+if os.path.exists("/data"):
+    DB_PATH = Path("/data/geo_optimizer.db")
+else:
+    DB_PATH = Path(__file__).parent / "geo_optimizer.db"
 
 
 @dataclass

@@ -61,6 +61,7 @@ class ContentChunk:
     created_at: str = ""
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
+    source_url: Optional[str] = None  # URL of the page this chunk came from (for deep crawl)
 
 
 @dataclass
@@ -145,9 +146,16 @@ def init_database():
                 created_at TEXT NOT NULL,
                 completed_at TEXT,
                 error_message TEXT,
+                source_url TEXT,
                 FOREIGN KEY (job_id) REFERENCES optimization_jobs(job_id)
             )
         """)
+
+        # Add source_url column if it doesn't exist (for existing DBs)
+        try:
+            cursor.execute("ALTER TABLE content_chunks ADD COLUMN source_url TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # Guidelines application tracking
         cursor.execute("""
@@ -270,11 +278,16 @@ def create_chunks_batch(job_id: str, chunks: List[Dict]) -> List[str]:
         cursor = conn.cursor()
         for i, chunk in enumerate(chunks):
             chunk_id = f"chunk_{uuid.uuid4().hex[:12]}"
+            # Use provided order or index
+            chunk_order = chunk.get("order", i)
+            source_url = chunk.get("source_url")
+
             cursor.execute("""
                 INSERT INTO content_chunks
-                (chunk_id, job_id, chunk_order, section_title, original_content, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (chunk_id, job_id, i, chunk.get("title", f"Section {i+1}"), chunk["content"], now))
+                (chunk_id, job_id, chunk_order, section_title, original_content, source_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (chunk_id, job_id, chunk_order, chunk.get("title", f"Section {i+1}"),
+                  chunk["content"], source_url, now))
             chunk_ids.append(chunk_id)
 
         # Update job with total chunks

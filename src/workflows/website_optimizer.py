@@ -39,16 +39,19 @@ class WebsiteOptimizer:
     Main orchestrator for website GEO optimization.
 
     Handles the complete workflow from URL input to final output.
+    Supports deep crawling multiple pages of a website.
     """
 
-    def __init__(self, max_workers: int = 3):
+    def __init__(self, max_workers: int = 3, max_pages: int = 5):
         """
         Initialize optimizer.
 
         Args:
             max_workers: Max parallel chunk processors (limited by API rate limits)
+            max_pages: Max pages to crawl (1 = single page, up to 10 for deep crawl)
         """
         self.max_workers = max_workers
+        self.max_pages = min(max_pages, 10)  # Cap at 10 to save tokens
         self.retriever = get_retriever()
 
     def optimize_url(
@@ -78,31 +81,34 @@ class WebsiteOptimizer:
         self._notify(progress_callback, job_id, "started", 0, "Job created")
 
         try:
-            # Step 1: Crawl and chunk
-            self._notify(progress_callback, job_id, "crawling", 5, "Crawling website...")
+            # Step 1: Crawl and chunk (supports deep crawl)
+            crawl_msg = f"Crawling website ({self.max_pages} pages max)..." if self.max_pages > 1 else "Crawling website..."
+            self._notify(progress_callback, job_id, "crawling", 5, crawl_msg)
             update_job(job_id, status="crawling")
 
-            chunks, metadata = crawl_and_chunk_sync(url)
+            chunks, metadata = crawl_and_chunk_sync(url, max_pages=self.max_pages)
 
             if not chunks:
                 raise Exception("No content extracted from URL")
 
             # Save crawl metadata
+            pages_crawled = metadata.get("pages_crawled", 1)
             crawl_stats = {
                 "title": metadata.get("title", "Unknown"),
                 "word_count": metadata.get("word_count", 0),
                 "crawl_time_ms": metadata.get("crawl_time_ms", 0),
-                "pages_crawled": metadata.get("pages_crawled", 1),
+                "pages_crawled": pages_crawled,
                 "content_length": metadata.get("content_length", 0),
                 "crawler": metadata.get("crawler", "Unknown"),
-                "links_count": metadata.get("links_count", 0),
+                "links_count": metadata.get("links_count", 0) or metadata.get("links_found", 0),
                 "images_count": metadata.get("images_count", 0),
                 "chunks_generated": len(chunks),
+                "pages_urls": metadata.get("pages_urls", [url]),
             }
             update_job(job_id, crawl_metadata=json.dumps(crawl_stats))
 
-            self._notify(progress_callback, job_id, "crawling", 15,
-                        f"Extracted {len(chunks)} content sections")
+            crawl_summary = f"Crawled {pages_crawled} page(s), extracted {len(chunks)} sections" if pages_crawled > 1 else f"Extracted {len(chunks)} content sections"
+            self._notify(progress_callback, job_id, "crawling", 15, crawl_summary)
 
             # Step 2: Classify industry
             self._notify(progress_callback, job_id, "classifying", 20, "Detecting industry...")
@@ -327,13 +333,18 @@ class WebsiteOptimizer:
 
 
 # Convenience function
-def optimize_website(url: str, settings: Dict = None) -> str:
+def optimize_website(url: str, settings: Dict = None, max_pages: int = 5) -> str:
     """
     Convenience function to optimize a website URL.
 
+    Args:
+        url: Website URL to optimize
+        settings: Optional settings dict
+        max_pages: Max pages to deep crawl (1-10, default 5)
+
     Returns job_id for tracking.
     """
-    optimizer = WebsiteOptimizer()
+    optimizer = WebsiteOptimizer(max_pages=max_pages)
     return optimizer.optimize_url(url, settings)
 
 

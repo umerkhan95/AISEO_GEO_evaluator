@@ -71,6 +71,7 @@ active_connections: dict = {}
 
 class OptimizeRequest(BaseModel):
     url: str = Field(description="URL to optimize")
+    max_pages: int = Field(default=5, ge=1, le=10, description="Max pages to crawl (1=single page, up to 10 for deep crawl)")
     settings: Optional[dict] = Field(default=None, description="Optional settings")
 
 
@@ -173,7 +174,7 @@ async def start_optimization(
     # Run optimization in background thread
     def run_optimization():
         try:
-            optimizer = WebsiteOptimizer(max_workers=3)
+            optimizer = WebsiteOptimizer(max_workers=3, max_pages=request.max_pages)
             optimizer.optimize_url(
                 url=request.url,
                 settings=request.settings,

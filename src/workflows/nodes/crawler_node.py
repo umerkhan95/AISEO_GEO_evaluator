@@ -3,12 +3,18 @@ Crawler Node: Fetches and chunks website content.
 
 Uses Crawl4AI to fetch page content and splits into logical chunks
 based on heading structure (H1, H2 boundaries).
+
+Supports deep crawling to fetch multiple pages from a website.
 """
 
 import re
 import asyncio
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 from dataclasses import dataclass
+from urllib.parse import urljoin, urlparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Crawl4AI imports
 try:
@@ -102,6 +108,205 @@ async def crawl_url(url: str) -> Tuple[str, Dict]:
         return markdown_content, metadata
 
 
+def extract_internal_links(result, base_url: str) -> List[str]:
+    """
+    Extract internal links from crawl result.
+
+    Filters to only include links from the same domain.
+    Prioritizes important pages (about, services, products, etc.)
+    """
+    if not result.links:
+        return []
+
+    base_domain = urlparse(base_url).netloc
+    internal_links = []
+
+    # Priority keywords for important pages
+    priority_keywords = [
+        'about', 'service', 'product', 'solution', 'feature',
+        'pricing', 'contact', 'team', 'blog', 'case-stud',
+        'portfolio', 'work', 'project', 'client', 'testimonial',
+        'faq', 'help', 'support', 'resource', 'guide'
+    ]
+
+    all_internal = result.links.get("internal", [])
+
+    # Handle different link formats from Crawl4AI
+    links_to_process = []
+    for link in all_internal:
+        if isinstance(link, dict):
+            href = link.get("href", "")
+        else:
+            href = str(link)
+        if href:
+            links_to_process.append(href)
+
+    # Score and sort links by priority
+    scored_links = []
+    for href in links_to_process:
+        # Skip anchors, javascript, mailto, etc.
+        if href.startswith('#') or href.startswith('javascript:') or href.startswith('mailto:'):
+            continue
+
+        # Make absolute URL
+        full_url = urljoin(base_url, href)
+        parsed = urlparse(full_url)
+
+        # Only same domain
+        if parsed.netloc != base_domain:
+            continue
+
+        # Skip common non-content pages
+        skip_patterns = [
+            '/login', '/signup', '/register', '/cart', '/checkout',
+            '/account', '/admin', '/api/', '/wp-', '/feed', '.pdf',
+            '.jpg', '.png', '.gif', '/tag/', '/category/', '/author/',
+            '/page/', '?', '#'
+        ]
+        if any(pattern in full_url.lower() for pattern in skip_patterns):
+            continue
+
+        # Score by priority keywords
+        score = 0
+        url_lower = full_url.lower()
+        for keyword in priority_keywords:
+            if keyword in url_lower:
+                score += 10
+
+        # Prefer shorter URLs (usually more important)
+        score -= len(parsed.path) // 10
+
+        scored_links.append((full_url, score))
+
+    # Sort by score (highest first) and deduplicate
+    scored_links.sort(key=lambda x: x[1], reverse=True)
+    seen = set()
+    for url, _ in scored_links:
+        # Normalize URL (remove trailing slash for dedup)
+        normalized = url.rstrip('/')
+        if normalized not in seen:
+            seen.add(normalized)
+            internal_links.append(url)
+
+    return internal_links
+
+
+async def deep_crawl_url(
+    url: str,
+    max_pages: int = 5,
+    progress_callback: callable = None
+) -> Tuple[List[Dict], Dict]:
+    """
+    Deep crawl a website - crawl multiple pages.
+
+    Args:
+        url: Starting URL (usually homepage)
+        max_pages: Maximum number of pages to crawl (default 5)
+        progress_callback: Optional callback(current_page, total_pages, url)
+
+    Returns:
+        Tuple of (list of page contents, aggregated metadata)
+    """
+    import time
+    start_time = time.time()
+
+    pages_content = []
+    crawled_urls: Set[str] = set()
+    urls_to_crawl = [url]
+    all_internal_links = []
+
+    # Normalize starting URL
+    base_domain = urlparse(url).netloc
+
+    if not CRAWL4AI_AVAILABLE:
+        # Fallback: just crawl single page
+        logger.warning("Crawl4AI not available, falling back to single page")
+        markdown, metadata = await crawl_url(url)
+        return [{"url": url, "content": markdown, "title": metadata.get("title", "Untitled")}], metadata
+
+    config = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        word_count_threshold=10,
+        exclude_external_links=True,
+        remove_overlay_elements=True,
+    )
+
+    async with AsyncWebCrawler() as crawler:
+        page_num = 0
+
+        while urls_to_crawl and page_num < max_pages:
+            current_url = urls_to_crawl.pop(0)
+
+            # Normalize and check if already crawled
+            normalized_url = current_url.rstrip('/')
+            if normalized_url in crawled_urls:
+                continue
+
+            crawled_urls.add(normalized_url)
+            page_num += 1
+
+            if progress_callback:
+                progress_callback(page_num, max_pages, current_url)
+
+            logger.info(f"Deep crawl [{page_num}/{max_pages}]: {current_url}")
+
+            try:
+                result = await crawler.arun(url=current_url, config=config)
+
+                if not result.success:
+                    logger.warning(f"Failed to crawl {current_url}: {result.error_message}")
+                    continue
+
+                markdown_content = result.markdown or ""
+
+                if len(markdown_content.split()) < 50:
+                    logger.info(f"Skipping {current_url} - too little content")
+                    continue
+
+                page_title = "Untitled"
+                if result.metadata:
+                    page_title = result.metadata.get("title", "Untitled")
+
+                pages_content.append({
+                    "url": current_url,
+                    "content": markdown_content,
+                    "title": page_title,
+                    "word_count": len(markdown_content.split())
+                })
+
+                # Extract internal links for further crawling
+                if page_num < max_pages:
+                    new_links = extract_internal_links(result, current_url)
+                    for link in new_links:
+                        norm_link = link.rstrip('/')
+                        if norm_link not in crawled_urls and link not in urls_to_crawl:
+                            urls_to_crawl.append(link)
+
+                    all_internal_links.extend(new_links)
+
+            except Exception as e:
+                logger.error(f"Error crawling {current_url}: {e}")
+                continue
+
+    crawl_time_ms = int((time.time() - start_time) * 1000)
+
+    # Aggregate metadata
+    total_words = sum(p["word_count"] for p in pages_content)
+    metadata = {
+        "title": pages_content[0]["title"] if pages_content else "Untitled",
+        "url": url,
+        "word_count": total_words,
+        "crawl_time_ms": crawl_time_ms,
+        "pages_crawled": len(pages_content),
+        "content_length": sum(len(p["content"]) for p in pages_content),
+        "crawler": "Crawl4AI (deep)",
+        "links_found": len(set(all_internal_links)),
+        "pages_urls": [p["url"] for p in pages_content],
+    }
+
+    return pages_content, metadata
+
+
 def chunk_by_headings(markdown: str, min_chunk_words: int = 50) -> List[ContentChunk]:
     """
     Split markdown content into chunks based on heading structure.
@@ -183,38 +388,82 @@ def chunk_by_headings(markdown: str, min_chunk_words: int = 50) -> List[ContentC
     return chunks
 
 
-async def crawl_and_chunk(url: str) -> Tuple[List[Dict], Dict]:
+async def crawl_and_chunk(
+    url: str,
+    max_pages: int = 1,
+    progress_callback: callable = None
+) -> Tuple[List[Dict], Dict]:
     """
-    Main entry point: Crawl URL and return chunks ready for database.
+    Main entry point: Crawl URL(s) and return chunks ready for database.
+
+    Args:
+        url: Starting URL
+        max_pages: Number of pages to crawl (1 = single page, >1 = deep crawl)
+        progress_callback: Optional callback for deep crawl progress
 
     Returns:
         Tuple of (list of chunk dicts, metadata dict)
     """
-    # Crawl the URL
-    markdown, metadata = await crawl_url(url)
+    if max_pages > 1:
+        # Deep crawl multiple pages
+        pages, metadata = await deep_crawl_url(url, max_pages, progress_callback)
 
-    # Chunk the content
-    chunks = chunk_by_headings(markdown)
+        # Chunk each page's content
+        all_chunks = []
+        chunk_order = 0
 
-    # Convert to dicts for database storage
-    chunk_dicts = [
-        {
-            "title": chunk.title,
-            "content": chunk.content,
-            "heading_level": chunk.heading_level,
-            "word_count": chunk.word_count,
-            "order": chunk.order
-        }
-        for chunk in chunks
-    ]
+        for page in pages:
+            page_chunks = chunk_by_headings(page["content"])
 
-    return chunk_dicts, metadata
+            # Add page URL context to each chunk
+            for chunk in page_chunks:
+                all_chunks.append({
+                    "title": chunk.title,
+                    "content": chunk.content,
+                    "heading_level": chunk.heading_level,
+                    "word_count": chunk.word_count,
+                    "order": chunk_order,
+                    "source_url": page["url"],
+                    "page_title": page["title"]
+                })
+                chunk_order += 1
+
+        metadata["chunks_generated"] = len(all_chunks)
+        return all_chunks, metadata
+
+    else:
+        # Single page crawl (original behavior)
+        markdown, metadata = await crawl_url(url)
+
+        # Chunk the content
+        chunks = chunk_by_headings(markdown)
+
+        # Convert to dicts for database storage
+        chunk_dicts = [
+            {
+                "title": chunk.title,
+                "content": chunk.content,
+                "heading_level": chunk.heading_level,
+                "word_count": chunk.word_count,
+                "order": chunk.order,
+                "source_url": url,
+                "page_title": metadata.get("title", "Untitled")
+            }
+            for chunk in chunks
+        ]
+
+        metadata["chunks_generated"] = len(chunk_dicts)
+        return chunk_dicts, metadata
 
 
 # Synchronous wrapper for non-async contexts
-def crawl_and_chunk_sync(url: str) -> Tuple[List[Dict], Dict]:
+def crawl_and_chunk_sync(
+    url: str,
+    max_pages: int = 1,
+    progress_callback: callable = None
+) -> Tuple[List[Dict], Dict]:
     """Synchronous wrapper for crawl_and_chunk."""
-    return asyncio.run(crawl_and_chunk(url))
+    return asyncio.run(crawl_and_chunk(url, max_pages, progress_callback))
 
 
 if __name__ == "__main__":

@@ -44,12 +44,24 @@ def get_qdrant_client() -> QdrantClient:
     global _qdrant_client
 
     if _qdrant_client is None:
-        _qdrant_client = QdrantClient(
-            host=config.qdrant.host,
-            port=config.qdrant.port,
-            api_key=config.qdrant.api_key if config.qdrant.api_key else None,
-        )
-        logger.info(f"Initialized Qdrant client: {config.qdrant.host}:{config.qdrant.port}")
+        host = config.qdrant.host
+        api_key = config.qdrant.api_key if config.qdrant.api_key else None
+
+        # Use URL for cloud instances (contain 'cloud.qdrant.io')
+        if "cloud.qdrant.io" in host or api_key:
+            url = f"https://{host}" if not host.startswith("http") else host
+            _qdrant_client = QdrantClient(
+                url=url,
+                api_key=api_key,
+            )
+            logger.info(f"Initialized Qdrant Cloud client: {url}")
+        else:
+            # Local instance
+            _qdrant_client = QdrantClient(
+                host=host,
+                port=config.qdrant.port,
+            )
+            logger.info(f"Initialized Qdrant client: {host}:{config.qdrant.port}")
 
     return _qdrant_client
 

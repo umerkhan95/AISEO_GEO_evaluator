@@ -28,6 +28,7 @@ interface CrawlStats {
   links_count: number;
   images_count: number;
   chunks_generated: number;
+  pages_urls?: string[];
 }
 
 interface JobStats {
@@ -55,6 +56,7 @@ interface JobResult {
 
 export default function Optimize() {
   const [url, setUrl] = useState('');
+  const [maxPages, setMaxPages] = useState(5);
   const [isProcessing, setIsProcessing] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -88,7 +90,7 @@ export default function Optimize() {
       const response = await fetch(`${API_BASE}/api/v2/optimize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), max_pages: maxPages }),
       });
 
       const data = await response.json();
@@ -265,6 +267,9 @@ export default function Optimize() {
           <p className="text-slate-400 text-lg">
             Transform your content for AI citations
           </p>
+          <p className="text-slate-500 text-sm mt-2">
+            Deep crawl up to 10 pages per website for comprehensive optimization
+          </p>
         </motion.div>
 
         {/* Main Input */}
@@ -275,8 +280,8 @@ export default function Optimize() {
         >
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-2xl blur opacity-30 group-hover:opacity-50 transition duration-500" />
-            <div className="relative bg-slate-800/90 backdrop-blur-xl rounded-2xl p-2">
-              <div className="flex items-center gap-2">
+            <div className="relative bg-slate-800/90 backdrop-blur-xl rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
                 <div className="flex-1 flex items-center bg-slate-900/50 rounded-xl px-4">
                   <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
@@ -314,6 +319,26 @@ export default function Optimize() {
                     'Optimize'
                   )}
                 </motion.button>
+              </div>
+
+              {/* Max Pages Slider */}
+              <div className="flex items-center gap-4 px-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="text-sm text-slate-400">Pages to crawl:</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(parseInt(e.target.value))}
+                  disabled={isProcessing}
+                  className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                />
+                <span className="text-sm font-medium text-cyan-400 w-8 text-center">{maxPages}</span>
               </div>
             </div>
           </div>

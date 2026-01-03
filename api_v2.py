@@ -75,6 +75,11 @@ class OptimizeRequest(BaseModel):
     settings: Optional[dict] = Field(default=None, description="Optional settings")
 
 
+class AuditRequest(BaseModel):
+    url: str = Field(description="URL to audit")
+    max_pages: int = Field(default=5, ge=1, le=10, description="Max pages to crawl for audit")
+
+
 class JobResponse(BaseModel):
     job_id: str
     url: str
@@ -366,6 +371,76 @@ async def health_check():
         "version": "2.0.0",
         "timestamp": datetime.now().isoformat()
     }
+
+
+@app.post("/api/v2/audit")
+async def audit_website(request: AuditRequest):
+    """
+    Audit a website for GEO optimization issues.
+
+    Returns a detailed report showing:
+    - Overall GEO score
+    - Per-page breakdown with URL identification
+    - Issues found (missing citations, statistics, structure, FAQ, etc.)
+    - Actionable recommendations
+
+    This helps users understand WHY their content needs optimization.
+    """
+    import time
+    from dataclasses import asdict
+    from src.workflows.nodes.crawler_node import crawl_and_chunk
+    from src.workflows.nodes.audit_analyzer import generate_audit_report
+
+    start_time = time.time()
+
+    try:
+        # Crawl the website (respecting max_pages limit)
+        chunks, metadata = await crawl_and_chunk(request.url, max_pages=request.max_pages)
+
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No content extracted from URL")
+
+        # Group chunks by source URL for page-level analysis
+        pages_content = {}
+        for chunk in chunks:
+            source_url = chunk.get("source_url", request.url)
+            if source_url not in pages_content:
+                pages_content[source_url] = {
+                    "url": source_url,
+                    "title": chunk.get("page_title", chunk.get("title", "Untitled")),
+                    "content": ""
+                }
+            pages_content[source_url]["content"] += "\n\n" + chunk.get("content", "")
+
+        # Generate audit report
+        report = generate_audit_report(list(pages_content.values()))
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "url": request.url,
+            "pages_audited": report.total_pages,
+            "max_pages": request.max_pages,
+            "overall_score": report.overall_score,
+            "summary": report.summary,
+            "top_issues": report.top_issues,
+            "top_recommendations": report.top_recommendations,
+            "pages": report.pages,
+            "crawl_metadata": {
+                "title": metadata.get("title", "Unknown"),
+                "total_words": metadata.get("word_count", 0),
+                "pages_crawled": metadata.get("pages_crawled", 1),
+                "crawl_time_ms": metadata.get("crawl_time_ms", 0),
+            },
+            "audit_time_ms": elapsed_ms,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Audit failed for {request.url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
 
 
 # ============================================================================

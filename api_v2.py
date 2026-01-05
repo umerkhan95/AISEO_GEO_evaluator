@@ -9,6 +9,7 @@ import json
 import asyncio
 from datetime import datetime
 from typing import Optional, List
+from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -24,6 +25,80 @@ from src.workflows.website_optimizer import WebsiteOptimizer
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# URL Validation
+# ============================================================================
+
+# Blocked placeholder/test domains that shouldn't be crawled
+BLOCKED_DOMAINS = {
+    "example.com", "example.org", "example.net",
+    "test.com", "test.org", "test.net",
+    "localhost", "127.0.0.1", "0.0.0.0",
+    "foo.com", "bar.com", "baz.com",
+    "sample.com", "demo.test", "fake.com",
+    "domain.com", "website.com", "mysite.com",
+    "yoursite.com", "placeholder.com",
+}
+
+
+def normalize_url(url: str) -> str:
+    """Normalize URL for comparison (lowercase, strip trailing slash, remove www)."""
+    url = url.lower().strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    domain = parsed.netloc.replace("www.", "")
+    path = parsed.path.rstrip("/") or ""
+    return f"{domain}{path}"
+
+
+def extract_domain(url: str) -> str:
+    """Extract domain from URL (without www prefix)."""
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    parsed = urlparse(url)
+    return parsed.netloc.replace("www.", "").lower()
+
+
+def validate_url(url: str) -> tuple[bool, str]:
+    """
+    Validate URL for crawling.
+
+    Returns (is_valid, error_message).
+    """
+    if not url or not url.strip():
+        return False, "URL is required"
+
+    # Add protocol if missing
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Invalid URL format"
+
+    # Must have a valid domain
+    if not parsed.netloc:
+        return False, "Invalid URL: no domain found"
+
+    domain = parsed.netloc.replace("www.", "").lower()
+
+    # Check for blocked placeholder domains
+    base_domain = domain.split(":")[0]  # Remove port if present
+    if base_domain in BLOCKED_DOMAINS:
+        return False, f"Cannot crawl placeholder domain '{base_domain}'. Please provide a real website URL."
+
+    # Check for IP-only addresses (except localhost which is already blocked)
+    if base_domain.replace(".", "").isdigit():
+        return False, "Cannot crawl IP addresses directly. Please provide a domain name."
+
+    # Must have a valid TLD (at least one dot in domain)
+    if "." not in base_domain:
+        return False, f"Invalid domain '{base_domain}'. Please provide a valid website URL with a domain extension."
+
+    return True, ""
 
 # Initialize database
 init_database()
@@ -168,6 +243,11 @@ async def start_optimization(
     - Stream updates: WebSocket /ws/{job_id}
     """
     from database import create_job
+
+    # Validate URL before processing
+    is_valid, error_msg = validate_url(request.url)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
 
     # Create job first to get the ID
     job_id = create_job(request.url, request.settings)
@@ -315,11 +395,13 @@ async def get_showcase(limit: int = 50):
 
     Returns URLs that have been optimized with full details:
     - URL, industry, scores, improvement %, timestamp
+    - Deduplicated by domain (only shows most recent entry per domain)
     """
     from database import get_db
 
     with get_db() as conn:
         cursor = conn.cursor()
+        # Fetch more than limit to account for deduplication
         cursor.execute("""
             SELECT
                 job_id,
@@ -340,10 +422,20 @@ async def get_showcase(limit: int = 50):
             WHERE status = 'completed'
             ORDER BY completed_at DESC
             LIMIT ?
-        """, (limit,))
+        """, (limit * 3,))  # Fetch extra to have enough after deduplication
 
+        # Deduplicate by domain - keep only the most recent entry per domain
+        seen_domains = set()
         jobs = []
+
         for row in cursor.fetchall():
+            domain = extract_domain(row["url"])
+
+            # Skip if we've already seen this domain
+            if domain in seen_domains:
+                continue
+
+            seen_domains.add(domain)
             jobs.append({
                 "job_id": row["job_id"],
                 "url": row["url"],
@@ -355,6 +447,10 @@ async def get_showcase(limit: int = 50):
                 "chunks_processed": row["total_chunks"],
                 "optimized_at": row["completed_at"] or row["created_at"]
             })
+
+            # Stop once we have enough unique domains
+            if len(jobs) >= limit:
+                break
 
         return {
             "total": len(jobs),
@@ -390,6 +486,11 @@ async def audit_website(request: AuditRequest):
     from dataclasses import asdict
     from src.workflows.nodes.crawler_node import crawl_and_chunk
     from src.workflows.nodes.audit_analyzer import generate_audit_report
+
+    # Validate URL before processing
+    is_valid, error_msg = validate_url(request.url)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
 
     start_time = time.time()
 

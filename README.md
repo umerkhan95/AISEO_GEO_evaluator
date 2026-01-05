@@ -228,6 +228,43 @@ GET /api/v2/results/{job_id}/html
 GET /api/v2/results/{job_id}/guidelines
 ```
 
+#### Get GEO Guidelines from Knowledge Base
+```http
+GET /api/v2/guidelines?category=citation&industry=Healthcare&limit=50
+```
+
+Query Parameters:
+- `category`: Filter by category (`citation`, `universal`, `industry`, `technical`, `metrics`)
+- `industry`: Filter by industry (`B2B_SaaS`, `Healthcare`, `E-commerce`, `Finance`, `Legal`, etc.)
+- `view`: Set to `sources` to get unique research papers instead of guidelines
+- `limit`: Maximum results (default 100)
+
+**Get all research sources:**
+```http
+GET /api/v2/guidelines?view=sources
+```
+
+Response:
+```json
+{
+  "total": 12,
+  "sources": [
+    {
+      "title": "GEO: Generative Engine Optimization",
+      "authors": ["Pranjal Aggarwal", "..."],
+      "url": "https://arxiv.org/abs/2311.09735",
+      "venue": "KDD 2024",
+      "guidelines_count": 33
+    }
+  ]
+}
+```
+
+#### Get Showcase (Optimized Websites)
+```http
+GET /api/v2/showcase?limit=50
+```
+
 #### Health Check
 ```http
 GET /api/v2/health
@@ -326,15 +363,31 @@ AISEO/
 
 ## Qdrant Collections
 
-5 specialized collections for GEO guidelines:
+5 specialized collections with **123 GEO guidelines** from **12 research sources**:
 
-| Collection | Purpose |
-|------------|---------|
-| `geo_seo_universal` | Universal GEO/SEO guidelines |
-| `geo_seo_industry` | Industry-specific guidelines |
-| `geo_seo_technical` | Technical implementation |
-| `geo_seo_citation` | Citation optimization |
-| `geo_seo_metrics` | Metrics and analytics |
+| Collection | Guidelines | Purpose |
+|------------|------------|---------|
+| `geo_seo_citation` | 38 | Citation optimization tactics |
+| `geo_seo_technical` | 28 | Technical implementation |
+| `geo_seo_universal` | 22 | Universal GEO/SEO guidelines |
+| `geo_seo_metrics` | 18 | Metrics and analytics |
+| `geo_seo_industry` | 17 | Industry-specific guidelines |
+
+### Research Sources
+
+| Source | Guidelines | URL |
+|--------|------------|-----|
+| AllAboutAI Research | 45 | [allaboutai.com](https://www.allaboutai.com/geo/what-is-generative-engine-optimization/) |
+| Princeton GEO (KDD 2024) | 33 | [arxiv.org/abs/2311.09735](https://arxiv.org/abs/2311.09735) |
+| AI Search Domination | 9 | [arxiv.org/abs/2509.08919](https://arxiv.org/abs/2509.08919) |
+| Omnius GEO Report 2025 | 8 | [omnius.so](https://www.omnius.so/blog/geo-industry-report) |
+| Averi AI LLM Guide | 8 | [averi.ai](https://www.averi.ai/breakdowns/the-definitive-guide-to-llm-optimized-content) |
+| Superprompt AI Traffic | 6 | [superprompt.com](https://superprompt.com/blog/ai-traffic-up-527-percent-how-to-get-cited-by-chatgpt-claude-perplexity-2025) |
+| StoryChief LLM Content | 5 | [storychief.io](https://storychief.io/blog/how-to-structure-your-content-so-llms-are-more-likely-to-cite-you) |
+| Profound Citation Patterns | 4 | [tryprofound.com](https://www.tryprofound.com/blog/ai-platform-citation-patterns) |
+| Metehan Perplexity Ranking | 3 | [metehan.ai](https://metehan.ai/blog/perplexity-ai-seo-59-ranking-patterns/) |
+| Digital Bloom AI Visibility | 1 | [thedigitalbloom.com](https://thedigitalbloom.com/learn/2025-ai-citation-llm-visibility-report/) |
+| Passionfruit SERP Analysis | 1 | [getpassionfruit.com](https://www.getpassionfruit.com/blog/why-ai-citations-lean-on-the-top-10) |
 
 ---
 

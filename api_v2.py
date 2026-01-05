@@ -392,6 +392,7 @@ async def get_optimizer_stats():
 async def get_all_guidelines(
     category: Optional[str] = None,
     industry: Optional[str] = None,
+    view: Optional[str] = None,
     limit: int = 100
 ):
     """
@@ -400,7 +401,8 @@ async def get_all_guidelines(
     Optional filters:
     - category: Filter by category (citation_optimization, universal_seo_geo, industry_specific, technical, metrics)
     - industry: Filter by industry (B2B_SaaS, Healthcare, E-commerce, etc.)
-    - limit: Maximum number of guidelines to return (default 100)
+    - view: Set to "sources" to get unique research papers instead of guidelines
+    - limit: Maximum number of results to return (default 100)
     """
     from src.clients.qdrant_client import get_qdrant_client, COLLECTIONS
 
@@ -472,6 +474,29 @@ async def get_all_guidelines(
             collection_counts[coll_name] = info.points_count
         except Exception:
             collection_counts[coll_name] = 0
+
+    # If view=sources, return unique research papers instead of guidelines
+    if view == "sources":
+        sources_map = {}
+        for g in all_guidelines:
+            source = g.get("source", {})
+            url = source.get("url", "")
+            if url and url not in sources_map:
+                sources_map[url] = {
+                    "title": source.get("title", "Unknown"),
+                    "authors": source.get("authors", []),
+                    "url": url,
+                    "venue": source.get("venue", source.get("excerpt", "")),
+                    "guidelines_count": 1
+                }
+            elif url:
+                sources_map[url]["guidelines_count"] += 1
+
+        sources = sorted(sources_map.values(), key=lambda x: x["guidelines_count"], reverse=True)
+        return {
+            "total": len(sources),
+            "sources": sources[:limit]
+        }
 
     return {
         "total": len(all_guidelines),

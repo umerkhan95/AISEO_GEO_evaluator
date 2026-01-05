@@ -402,9 +402,7 @@ async def get_all_guidelines(
     - industry: Filter by industry (B2B_SaaS, Healthcare, E-commerce, etc.)
     - limit: Maximum number of guidelines to return (default 100)
     """
-    from src.tools.qdrant_tools import get_collection_stats
     from src.clients.qdrant_client import get_qdrant_client, COLLECTIONS
-    import json
 
     client = get_qdrant_client()
     if not client:
@@ -466,8 +464,14 @@ async def get_all_guidelines(
             logger.warning(f"Error querying {collection_name}: {e}")
             continue
 
-    # Get stats for summary
-    stats = json.loads(get_collection_stats())
+    # Get collection counts for summary
+    collection_counts = {}
+    for coll_name in set(collection_map.values()):
+        try:
+            info = client.get_collection(coll_name)
+            collection_counts[coll_name] = info.points_count
+        except Exception:
+            collection_counts[coll_name] = 0
 
     return {
         "total": len(all_guidelines),
@@ -476,9 +480,8 @@ async def get_all_guidelines(
             "industry": industry,
         },
         "stats": {
-            "total_in_db": stats.get("total_guidelines", 0),
-            "by_category": {k: v.get("count", 0) for k, v in stats.get("collections", {}).items()},
-            "by_industry": stats.get("by_industry", {}),
+            "total_in_db": sum(collection_counts.values()),
+            "by_category": collection_counts,
         },
         "guidelines": all_guidelines[:limit]
     }

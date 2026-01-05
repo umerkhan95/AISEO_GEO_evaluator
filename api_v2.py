@@ -388,6 +388,102 @@ async def get_optimizer_stats():
     return stats
 
 
+@app.get("/api/v2/guidelines")
+async def get_all_guidelines(
+    category: Optional[str] = None,
+    industry: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    Get all GEO guidelines stored in Qdrant.
+
+    Optional filters:
+    - category: Filter by category (citation_optimization, universal_seo_geo, industry_specific, technical, metrics)
+    - industry: Filter by industry (B2B_SaaS, Healthcare, E-commerce, etc.)
+    - limit: Maximum number of guidelines to return (default 100)
+    """
+    from src.tools.qdrant_tools import get_collection_stats
+    from src.clients.qdrant_client import get_qdrant_client, COLLECTIONS
+    import json
+
+    client = get_qdrant_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Qdrant not available")
+
+    # Map category to collection name
+    collection_map = {
+        "citation_optimization": "geo_seo_citation",
+        "citation": "geo_seo_citation",
+        "universal_seo_geo": "geo_seo_universal",
+        "universal": "geo_seo_universal",
+        "industry_specific": "geo_seo_industry",
+        "industry": "geo_seo_industry",
+        "technical": "geo_seo_technical",
+        "metrics": "geo_seo_metrics",
+    }
+
+    # Determine which collections to query
+    if category:
+        collection_name = collection_map.get(category.lower())
+        if not collection_name:
+            raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+        collections_to_query = [collection_name]
+    else:
+        collections_to_query = list(set(collection_map.values()))
+
+    all_guidelines = []
+
+    for collection_name in collections_to_query:
+        try:
+            # Scroll through all points in the collection
+            results, _ = client.scroll(
+                collection_name=collection_name,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False
+            )
+
+            for point in results:
+                payload = point.payload
+                # Apply industry filter if specified
+                if industry:
+                    industries = payload.get("industry_tags", [])
+                    if industry not in industries and industries:
+                        continue
+
+                all_guidelines.append({
+                    "id": payload.get("guideline_id", str(point.id)),
+                    "content": payload.get("guideline_text", ""),
+                    "category": payload.get("category", ""),
+                    "industries": payload.get("industry_tags", []),
+                    "source": payload.get("source_paper", {}),
+                    "confidence": payload.get("confidence_score", 0),
+                    "priority": payload.get("priority", "medium"),
+                    "has_quantitative_data": payload.get("has_quantitative_data", False),
+                    "has_case_study": payload.get("has_case_study", False),
+                })
+        except Exception as e:
+            logger.warning(f"Error querying {collection_name}: {e}")
+            continue
+
+    # Get stats for summary
+    stats = json.loads(get_collection_stats())
+
+    return {
+        "total": len(all_guidelines),
+        "filters": {
+            "category": category,
+            "industry": industry,
+        },
+        "stats": {
+            "total_in_db": stats.get("total_guidelines", 0),
+            "by_category": {k: v.get("count", 0) for k, v in stats.get("collections", {}).items()},
+            "by_industry": stats.get("by_industry", {}),
+        },
+        "guidelines": all_guidelines[:limit]
+    }
+
+
 @app.get("/api/v2/showcase")
 async def get_showcase(limit: int = 50):
     """
